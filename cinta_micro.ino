@@ -19,9 +19,8 @@ hw_timer_t *timer1 = NULL;
 hw_timer_t *timer2 = NULL;
 
 
-int Started = 0;
-
-
+int newData = 0;
+char receivedChar = 0;
 
 typedef struct{
   int vel;
@@ -31,14 +30,12 @@ typedef struct{
 CINTA Cinta;
 
 void ARDUINO_ISR_ATTR bombaIsr() {
-  Serial.println("Interrupcion de bomba");
   digitalWrite(bombaIn1, LOW);
   timerStop(timer1);
   Sistema = BoteLleno;
 }
 
 void ARDUINO_ISR_ATTR cintaIsr() {
-  Serial.println("Interrupcion de cinta");
   analogWrite(cintaIn1, 0);
   timerStop(timer2);
   Sistema = Fin;
@@ -52,6 +49,7 @@ void MoveCinta(void){
 
   analogWrite(cintaIn1, vel);
   analogWrite(cintaIn2, 0);
+
 }
 
 void ActivaBomba(int ml){
@@ -60,12 +58,12 @@ void ActivaBomba(int ml){
 }
 
 
-void MoveCintaPos(void){
-  long int t;
-  //t = map(cm,0,10,0,)
+void recvOneChar() {
+    if (Serial.available() > 0) {
+        receivedChar = Serial.read();
+        newData = true;
+    }
 }
-
-
 
 void setup() {
   pinMode(sensor, INPUT);     //
@@ -75,30 +73,77 @@ void setup() {
   pinMode(bombaIn1, OUTPUT);  //
   pinMode(bombaIn2, OUTPUT);  //
 
+  int ml;
+
+
   Serial.begin(115200);
 
+  delay(1000);
+  
+  // --- Solicitar datos al usuario ---
+  Serial.println("Introduce la velocidad (0 - 2.2): ");
+  while (Serial.available() == 0) {}
+  Cinta.vel = Serial.parseFloat();
+
+  Serial.print("Velocidad recibida: ");
+  Serial.println(Cinta.vel);
+
+  Serial.println("Introduce los ml a llenar: ");
+  while (Serial.available() == 0) {}
+  ml = Serial.parseInt();
+
+  Serial.print("Mililitros recibidos: ");
+  Serial.println(ml);
+
+  Serial.println("Introduce la distancia: ");
+  while (Serial.available() == 0) {}
+  Cinta.d = Serial.parseInt();
+
+  Serial.print("Distancia recibida: ");
+  Serial.println(Cinta.d);
+
   // Timer Divider
+
   timer1 = timerBegin(1000000);
   timer2 = timerBegin(1000000);
 
-  if (timer1 == NULL) Serial.println("Timer no iniciado");
+  if (timer1 == NULL) Serial.println("Timer1 no iniciado");
   if (timer2 == NULL) Serial.println("Timer2 no iniciado");
+
   timerAttachInterrupt(timer1, &bombaIsr);
-  
   timerAttachInterrupt(timer2, &cintaIsr);
 
-  int ml = 20;
-  Cinta.vel = 2;
-  Cinta.d = 10;
+
+  
 
   int t1 = map(ml,0,32,0,30000000);
   int t2 = map(Cinta.d,0,10,0,(Cinta.d/Cinta.vel)*1000000);
   
   timerAlarm(timer1, t1, true, 0);
-  timerAlarm(timer2, t2, true, 0);
+  timerStop(timer1);
 
+  timerAlarm(timer2, t2, true, 0);
+  timerStop(timer2);
 
   delay(5000);
+
+  /*int n = 3;
+  while(n){
+    if(!newData)
+      recvOneChar();
+
+    else
+      {
+        switch(n){
+          case 3: Cinta.vel = receivedChar; break;
+          case 2: ml        = receivedChar; break;
+          case 1: Cinta.d   = receivedChar; break;
+        }
+        newData = 0;
+        n -= 1;
+      }
+  }
+ */ 
 }
 
 void loop() {
@@ -107,24 +152,23 @@ void loop() {
     int lectura;
 
      lectura = analogRead(sensor);
-
-
-    Serial.print("Estado: ");
-    Serial.println(Sistema);
     
 
     switch(Sistema){
       case MoverCinta:
         MoveCinta();
+
         
         if (!lectura)
           Sistema = LlenaBote;
         break;
 
       case LlenaBote:
+        Serial.println("Llenando el bote");
+
         // Parar la cinta
-        digitalWrite(cintaIn1, LOW);
-        digitalWrite(cintaIn2, LOW);
+        analogWrite(cintaIn1, 0);
+        analogWrite(cintaIn2, 0);
         
         // Encender la bomba
         digitalWrite(bombaIn1,HIGH);
@@ -137,6 +181,7 @@ void loop() {
 
       case(BoteLleno):
         MoveCinta();
+        Serial.println("Cinta activada");
         timerStart(timer2);
         Sistema = Espera;
       break;
